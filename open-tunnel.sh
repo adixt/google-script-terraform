@@ -1,11 +1,11 @@
 #!/bin/bash
 
 start=30000
-end=45000
+end=47000
 increment=500
 ssh_username="adam"
 ssh_private_key_path="~/.ssh/google-cloud-rsa"
-vm_ip="34.118.26.6"
+vm_ip="34.118.51.202"
 
 for ((i=start; i<=end; i+=increment))
 do

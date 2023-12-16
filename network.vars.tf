@@ -11,7 +11,7 @@ variable "network_opened_ports_type" {
 }
 
 variable "network_opened_ports" {
-  default     = ["30000-45000"]
+  default     = ["30000-47000"]
   type        = list(string)
   description = "An optional list of ports to which this rule applies. Each entry must be either an integer or a range."
 }
