@@ -1,4 +1,111 @@
-# google-script-terraform
+# google-script-terraform README
+
+## Connecting Google App Script with the GitHub through additional file
+
+- Install _Google Apps Script GitHub Assistant_ browser extension from Google Web Store
+[google-apps-script-github](https://chromewebstore.google.com/detail/google-apps-script-github/lfjcgcmkmjjlieihflfhjopckgpelofo)
+
+- Authenticate in `google-apps-script-github` through the GitHub token
+
+- push the existing Google [App Script](https://script.google.com) code into the new GitHub repository 
+
+- in the Google App Script project -> Settings; find the Google Script ID, e.g. `1VhXxXxXxXxXxXxXxXxXxXxXxXxXxXxXxXxXxXxXxXxXxXxXxXxXxgZqI`
+
+- in the GitHub repo, in the root folder, create a new file called `.clasp.json`
+
+It must have the following content:
+
+```
+{"scriptId":"1VhXxXxXxXxXxXxXxXxXxXxXxXxXxXxXxXxXxXxXxXxXxXxXxXxXxgZqI",
+"rootDir":"."}
+```
+where the `scriptId` is a real Google App Script ID fetched in the previous step.
+
+```
+/repos/maybe-clasp-test-repo$ ls -las
+total 32
+4 drwxrwxr-x 1 adam adam 4096 Dec 30 10:34 .
+8 drwxr-xr-x 1 adam adam 8192 Dec 30 10:23 ..
+4 -rw-rw-r-- 1 adam adam  607 Dec 30 10:23 appsscript.json
+4 -rw-rw-r-- 1 adam adam   87 Dec 30 10:34 .clasp.json # NEW MANUALLY ADDED FILE IN THE GITHUB REPO!!!
+4 drwxrwxr-x 1 adam adam 4096 Dec 30 10:44 .git
+4 -rw-rw-r-- 1 adam adam  704 Dec 30 10:34 Kod.gs
+4 -rw-rw-r-- 1 adam adam   46 Dec 30 10:23 README.md
+```
+
+## Creating the GitHub Actions CI/CD build config
+
+- In the GitHub repo, in the root folder, create the folders structure:
+
+`.github/workflows/`
+
+- in the `.github/workflows` subfolder, create a new file called `clasp-build.yml`
+
+```
+/repos/maybe-clasp-test-repo/.github$ tree
+.
+└── workflows
+    └── clasp-build.yml
+```
+
+Enusre `clasp-build.yml` has the following content:
+
+```
+name: CLASP Build
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: self-hosted # This specifies the use of a custom runner
+
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+
+    - name: Push to Apps Script
+      run: clasp push
+
+    - name: Deploy with CLASP
+      run: |
+        DATE=$(date '+%Y-%m-%d_%H:%M:%S')
+        clasp deploy -d "my deployment at $DATE"
+
+    # Add additional steps as needed
+```
+
+## Preparing the Terraform deployment script for the CI/CD
+
+- In the GitHub prepared repo, go to the Settings -> Actions -> Runners.
+
+- Then, click `New self-hosted runner`
+
+- In the `Configure` section of the opened window, find the token, e.g., `ACGXxxxXXxxxXXxxxXXxxxXXxxxXO` and the GitHub repo url e.g. `https://github.com/adixt/maybe-clasp-test-repo `
+```
+Configure
+# Create the runner and start the configuration experience
+$ ./config.sh --url https://github.com/adixt/maybe-clasp-test-repo --token ACGXxxxXXxxxXXxxxXXxxxXXxxxXO
+```
+
+- Open the VM auto config file in the __Terraform repo__: `cloud-init.sh`
+
+- In `cloud-init.sh`, replace `<REPLACE_WITH_REAL_TOKEN_HERE>` with fetched token, e.g. `ACGXxxxXXxxxXXxxxXXxxxXXxxxXO` and GitHub url with proper one.
+
+Current code:
+```
+...
+sudo -u ${ssh_username} bash -c '$HOME/actions-runner/config.sh --unattended --replace  --url https://github.com/adixt/google-script-terraform --token <REPLACE_WITH_REAL_TOKEN_HERE>' | tee -a /var/log/startup-script.log
+```
+
+New version:
+```
+...
+sudo -u ${ssh_username} bash -c '$HOME/actions-runner/config.sh --unattended --replace  --url https://github.com/adixt/maybe-clasp-test-repo --token ACGXxxxXXxxxXXxxxXXxxxXXxxxXO' | tee -a /var/log/startup-script.log
+```
 
 ## Deploy the resources through Terraform
 
@@ -98,8 +205,68 @@ static_ip = "34.118.51.202"
 
 ```
 
-Now you can adjust the values in `open-tunnel.sh`.
+Now you can adjust the IP in `open-tunnel.sh`, so replace `vm_ip="x.y.z.a"` with the static_ip of your VM.
 
+__!!! BEFORE CONTINUING WAIT 5-10 MINUTES FOR THE VM PROVISIONING SCRIPT!!!__ the `cloud-init.sh` progress won't be visible in the terraform output, you must _JUST WAIT_ before ssh connection into the new VM.
+
+Then you can connect to your new VM, e.g.
+
+```
+adam@pop-os:~/.ssh$  ssh x.y.z.a -i google-cloud-rsa 
+Linux fir-withnextjs-instance 6.1.0-15-cloud-amd64 #1 SMP PREEMPT_DYNAMIC Debian 6.1.66-1 (2023-12-09) x86_64
+
+The programs included with the Debian GNU/Linux system are free software;
+the exact distribution terms for each program are described in the
+individual files in /usr/share/doc/*/copyright.
+
+Debian GNU/Linux comes with ABSOLUTELY NO WARRANTY, to the extent
+permitted by applicable law.
+Last login: Sat Dec 30 13:42:56 2023 from x.y.z.a
+adam@fir-withnextjs-instance:~$ 
+```
+
+After you ssh into the VM, you can validate the working runner with `ps -a`
+```
+adam@fir-withnextjs-instance:~$ ps -a
+    PID TTY          TIME CMD
+   2033 pts/0    00:00:00 run.sh # RUNNING RUNNER
+   2037 pts/0    00:00:00 run-helper.sh # RUNNING RUNNER
+   2041 pts/0    00:00:02 Runner.Listener # RUNNING RUNNER
+   2250 pts/1    00:00:00 ps
+```
+
+also view the VM deployment logs with `cat /var/log/startup-script.log`
+
+```
+...
+84 packages are looking for funding
+  run `npm fund` for details
+/home/adam/actions-runner/actions-runner-linux-x64-2.311.0.tar.gz: OK
+
+--------------------------------------------------------------------------------
+|        ____ _ _   _   _       _          _        _   _                      |
+|       / ___(_) |_| | | |_   _| |__      / \   ___| |_(_) ___  _ __  ___      |
+|      | |  _| | __| |_| | | | | '_ \    / _ \ / __| __| |/ _ \| '_ \/ __|     |
+|      | |_| | | |_|  _  | |_| | |_) |  / ___ \ (__| |_| | (_) | | | \__ \     |
+|       \____|_|\__|_| |_|\__,_|_.__/  /_/   \_\___|\__|_|\___/|_| |_|___/     |
+|                                                                              |
+|                       Self-hosted runner registration                        |
+|                                                                              |
+--------------------------------------------------------------------------------
+
+# Authentication
+
+
+√ Connected to GitHub
+
+# Runner Registration
+
+
+
+
+A runner exists with the same name
+√ Successfully replaced the runner
+```
 
 ## Log into CLASP Globally
 
@@ -155,7 +322,7 @@ Default credentials saved to: /home/adam/.clasprc.json.
 adam@fir-withnextjs-instance:~$ 
 ```
 
-## Cloning the project
+## Validating the possiblity for cloning the project
 
 Now begin with creating the new folder.
 
@@ -181,7 +348,9 @@ Ignored files:
 adam@fir-withnextjs-instance:~/project1$ 
 ```
 
-## Log into clasp locally
+# FOR THE FUTURE RESEACH - not needed for CI/CD
+ 
+## Log into clasp locally (FOR RUNNING THE CODE LOCALLY E.G. TESTS)
 
 The crucial step now is to log into clasp locally.
 
